@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# This adds a remote origin at $GITURL/dotfiles/$VCSH_DIRECTORY which
+# is helpful for creating new dotfile repositories that you plan to
+# store on (e.g.) Github.
+#
+vcsh $VCSH_DIRECTORY remote add origin git@github.com:/sabrehagen/$VCSH_DIRECTORY
