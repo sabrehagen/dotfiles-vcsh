@@ -1,7 +1,13 @@
 #!/bin/sh
 
-# This adds a remote origin at $GITURL/dotfiles/$VCSH_DIRECTORY which
-# is helpful for creating new dotfile repositories that you plan to
-# store on (e.g.) Github.
+# This adds a remote origin for newly initialized repos (not clones),
+# useful for creating new dotfile repositories you plan to push.
 #
-vcsh $VCSH_DIRECTORY remote add origin git@github.com:/sabrehagen/$VCSH_DIRECTORY
+# Avoid running during `vcsh clone`, which already sets its own remote.
+[ "$VCSH_COMMAND" = "init" ] || exit 0
+
+# Do nothing if an origin is already configured.
+vcsh "$VCSH_DIRECTORY" remote get-url origin >/dev/null 2>&1 && exit 0
+
+base="${VCSH_REMOTE_BASE:-git@github.com:sabrehagen}"
+vcsh "$VCSH_DIRECTORY" remote add origin "$base/$VCSH_DIRECTORY"
