@@ -7,5 +7,6 @@
 # directory. Git and thus vcsh now see these as un-staged changes to the
 # working branch and you can deal with them as usual.
 
-find . -name '*.vcsh-unclobber' \
-	-execdir sh -c 'mv -- "$1" "${1%.vcsh-unclobber}"' sh '{}' \;
+find . -name '*.vcsh-unclobber' -print0 | while IFS= read -r -d '' file; do
+  mv -- "$file" "${file%.vcsh-unclobber}"
+done
