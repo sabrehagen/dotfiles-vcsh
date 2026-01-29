@@ -6,7 +6,6 @@
 # cleanly, and a post-merge hook can be used to figure out what to do with
 # the now-renamed files.
 
-git ls-tree -r --name-only origin/master | while IFS= read -r object; do
-  # This also handles vcsh-managed attributes files under .config/vcsh/repo.d/*/info/attributes.
-  mv -- "$object" "$object.vcsh-unclobber"
+for object in $(git ls-tree -r origin/master | awk '{print $4}'); do
+  [ -e "$object" ] && mv "$object" "$object.vcsh-unclobber" 
 done
