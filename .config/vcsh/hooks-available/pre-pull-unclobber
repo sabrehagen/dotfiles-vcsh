@@ -1,0 +1,45 @@
+#!/bin/sh
+
+# Move files that would be clobbered by an upcoming pull.
+# This runs before vcsh's per-repo pull loop, so we handle repo selection here.
+
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+worktree="${VCSH_BASE:-$HOME}"
+repo_root="${VCSH_REPO_D:-$XDG_CONFIG_HOME/vcsh/repo.d}"
+
+unclobber_repo() {
+  repo="$1"
+  [ -n "$repo" ] || return 0
+
+  GIT_DIR="${repo_root}/${repo}.git"
+  [ -d "$GIT_DIR" ] || return 0
+
+  # Ensure we have remote refs before we try to inspect them.
+  git --git-dir="$GIT_DIR" fetch -q origin >/dev/null 2>&1 || true
+
+  branch_ref="$(git --git-dir="$GIT_DIR" symbolic-ref -q refs/remotes/origin/HEAD || true)"
+  if [ -z "$branch_ref" ]; then
+    if git --git-dir="$GIT_DIR" rev-parse --verify -q refs/remotes/origin/master >/dev/null; then
+      branch_ref="refs/remotes/origin/master"
+    elif git --git-dir="$GIT_DIR" rev-parse --verify -q refs/remotes/origin/main >/dev/null; then
+      branch_ref="refs/remotes/origin/main"
+    else
+      return 0
+    fi
+  fi
+
+  cd "$worktree" || exit 1
+  git --git-dir="$GIT_DIR" ls-tree -r --name-only "$branch_ref" | while read -r object; do
+    [ -e "$worktree/$object" ] && mv "$worktree/$object" "$worktree/$object.vcsh-unclobber"
+  done
+}
+
+if [ -n "$VCSH_REPO_NAME" ]; then
+  unclobber_repo "$VCSH_REPO_NAME"
+else
+  for repo_path in "$repo_root"/*.git; do
+    [ -d "$repo_path" ] || continue
+    repo="$(basename "$repo_path" .git)"
+    unclobber_repo "$repo"
+  done
+fi
