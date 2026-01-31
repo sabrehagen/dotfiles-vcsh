@@ -10,4 +10,4 @@
 worktree="${VCSH_BASE:-$HOME}"
 
 find "$worktree" -name '*.vcsh-unclobber' \
-	-exec sh -c 'mv -- "$1" "${1%.vcsh-unclobber}"' sh '{}' \;
+	-execdir sh -c 'printf "%s [post-merge] repo=%s move=%s\n" "$(date -Is 2>/dev/null || date)" "${VCSH_REPO_NAME:-unknown}" "$1"; mv -- "$1" "${1%.vcsh-unclobber}"' sh '{}' \;

@@ -9,5 +9,11 @@
 worktree="${VCSH_BASE:-$HOME}"
 
 git ls-tree -r --name-only origin/master | while IFS= read -r object; do
-  [ -e "$worktree/$object" ] && mv -- "$worktree/$object" "$worktree/$object.vcsh-unclobber"
+  if [ -e "$worktree/$object" ]; then
+    printf '%s [pre-merge] repo=%s move=%s\n' \
+      "$(date -Is 2>/dev/null || date)" \
+      "${VCSH_REPO_NAME:-unknown}" \
+      "$worktree/$object"
+    mv -- "$worktree/$object" "$worktree/$object.vcsh-unclobber"
+  fi
 done
