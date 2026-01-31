@@ -9,5 +9,6 @@
 
 worktree="${VCSH_BASE:-$HOME}"
 
-find "$worktree" -name '*.vcsh-unclobber' \
-	-execdir sh -c 'printf "%s [post-merge] repo=%s move=%s\n" "$(date -Is 2>/dev/null || date)" "${VCSH_REPO_NAME:-unknown}" "$1"; mv -- "$1" "${1%.vcsh-unclobber}"' sh '{}' \;
+git ls-tree -r --name-only origin/master | while IFS= read -r object; do
+  mv -- "$worktree/$object.vcsh-unclobber" "$worktree/$object"
+done
