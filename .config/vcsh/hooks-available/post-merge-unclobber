@@ -7,7 +7,6 @@
 # directory. Git and thus vcsh now see these as un-staged changes to the
 # working branch and you can deal with them as usual.
 
-echo VCSH_BASE $VCSH_BASE
 worktree="${VCSH_BASE:-$HOME}"
 
 find "$worktree" -name '*.vcsh-unclobber' \
