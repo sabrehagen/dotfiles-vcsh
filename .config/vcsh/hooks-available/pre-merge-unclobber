@@ -9,5 +9,5 @@
 worktree="${VCSH_BASE:-$HOME}"
 
 git ls-tree -r --name-only origin/master | while IFS= read -r object; do
-  mv -- "$worktree/$object" "$worktree/$object.vcsh-unclobber"
+  [ -e "$worktree/$object" ] && mv -- "$worktree/$object" "$worktree/$object.vcsh-unclobber"
 done
