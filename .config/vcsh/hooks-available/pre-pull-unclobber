@@ -3,11 +3,6 @@
 # Move files that would be clobbered by an upcoming pull.
 # This runs before vcsh's per-repo pull loop, so we handle repo selection here.
 
-# If we're being run from a deleted directory, any `git` invocation will fail
-# with "fatal: Unable to read current working directory". Avoid calling `pwd`
-# (which can itself error) and just jump to a safe location.
-cd "${HOME:-/}" 2>/dev/null || exit 0
-
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 worktree="${VCSH_BASE:-$HOME}"
 repo_root="${VCSH_REPO_D:-$XDG_CONFIG_HOME/vcsh/repo.d}"

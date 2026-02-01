@@ -1,11 +1,6 @@
 # Run before vcsh's "run" command (vcsh <repo> <git ...>).
 # If the command is a git pull (or git p), unclobber potential conflicts.
 
-# If we're being run from a deleted directory, any `git` invocation will fail
-# with "fatal: Unable to read current working directory". Avoid calling `pwd`
-# (which can itself error) and just jump to a safe location.
-cd "${HOME:-/}" 2>/dev/null || return 0
-
 if [ "$1" = "git" ] && { [ "$2" = "pull" ] || [ "$2" = "p" ]; }; then
   worktree="${VCSH_BASE:-$HOME}"
   git_dir_path="${GIT_DIR:-$VCSH_REPO_D/$VCSH_REPO_NAME.git}"
