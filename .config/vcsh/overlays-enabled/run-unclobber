@@ -1,6 +1,6 @@
-# When checking out a branch that introduces new files, move any pre-existing
-# untracked files at those paths to .vcsh-unclobber before checkout, then
-# restore them after so they appear as unstaged changes for inspection.
+# For git checkout and git pull: move any pre-existing untracked files at
+# conflicting paths to .vcsh-unclobber before the operation, then restore
+# them after so they appear as unstaged changes for inspection.
 
 run() {
 	worktree="${VCSH_BASE:-$HOME}"
@@ -8,46 +8,65 @@ run() {
 	# Match both "git" (vcsh run) and "/path/to/git" (vcsh shorthand) without a subshell
 	case "$1" in git|*/git) _is_git=1 ;; *) _is_git=0 ;; esac
 
+	_unclobber_target=""
+
 	if [ "$_is_git" = "1" ] && [ "$2" = "checkout" ]; then
 		# Parse the target ref from the checkout args.
 		# For -b/-B <new-branch> [<start-point>], skip the new branch name
 		# so we land on the start point (where new files actually come from).
-		target=""
-		skip_next=0
-		for arg in "$@"; do
-			if [ "$skip_next" = "1" ]; then
-				skip_next=0
+		_target=""
+		_skip_next=0
+		for _arg in "$@"; do
+			if [ "$_skip_next" = "1" ]; then
+				_skip_next=0
 				continue
 			fi
-			case "$arg" in
+			case "$_arg" in
 				git|*/git|checkout) ;;
-				-b|-B|--orphan)     skip_next=1 ;;
+				-b|-B|--orphan)     _skip_next=1 ;;
 				--)                 break ;;
 				-*)                 ;;
-				*)                  target="$arg" ;;
+				*)                  _target="$_arg" ;;
 			esac
 		done
 
 		# If target doesn't resolve locally, try origin/<target>
 		# (handles: git checkout feature, where origin/feature exists)
-		if [ -n "$target" ] \
-			&& ! git --git-dir="$GIT_DIR" rev-parse -q --verify "$target" >/dev/null 2>&1; then
-			target="origin/$target"
+		if [ -n "$_target" ] \
+			&& ! git --git-dir="$GIT_DIR" rev-parse -q --verify "$_target" >/dev/null 2>&1; then
+			_target="origin/$_target"
 		fi
 
-		# Move untracked files that the checkout would clobber
-		if [ -n "$target" ] \
-			&& git --git-dir="$GIT_DIR" rev-parse -q --verify "$target" >/dev/null 2>&1; then
-			git --git-dir="$GIT_DIR" diff --name-only --diff-filter=A HEAD "$target" 2>/dev/null \
-				| while IFS= read -r path; do
-					src="$worktree/$path"
-					dst="$src.vcsh-unclobber"
-					[ -e "$src" ] || continue
-					[ -e "$dst" ] && continue
-					git --git-dir="$GIT_DIR" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 && continue
-					mv -- "$src" "$dst"
-				done
+		if [ -n "$_target" ] \
+			&& git --git-dir="$GIT_DIR" rev-parse -q --verify "$_target" >/dev/null 2>&1; then
+			_unclobber_target="$_target"
 		fi
+
+	elif [ "$_is_git" = "1" ] && [ "$2" = "pull" ]; then
+		# Fetch first so the remote ref reflects what is actually incoming
+		git --git-dir="$GIT_DIR" fetch -q origin 2>/dev/null || true
+
+		_head="$(git --git-dir="$GIT_DIR" symbolic-ref -q HEAD 2>/dev/null || true)"
+		if [ -n "$_head" ]; then
+			_branch="${_head#refs/heads/}"
+			_upstream="refs/remotes/origin/$_branch"
+			if git --git-dir="$GIT_DIR" rev-parse -q --verify "$_upstream" >/dev/null 2>&1; then
+				_unclobber_target="$_upstream"
+			fi
+		fi
+	fi
+
+	# Move untracked files that the operation would clobber
+	if [ -n "$_unclobber_target" ]; then
+		git --git-dir="$GIT_DIR" diff --name-only --diff-filter=A HEAD "$_unclobber_target" 2>/dev/null \
+			| while IFS= read -r path; do
+				src="$worktree/$path"
+				dst="$src.vcsh-unclobber"
+				[ -e "$src" ] || continue
+				[ -e "$dst" ] && continue
+				git --git-dir="$GIT_DIR" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 && continue
+				mv -- "$src" "$dst"
+			done
 	fi
 
 	hook pre-run
@@ -56,8 +75,8 @@ run() {
 	VCSH_COMMAND_RETURN_CODE=$?
 	hook post-run
 
-	# Restore .vcsh-unclobber files after a successful checkout
-	if [ "$_is_git" = "1" ] && [ "$2" = "checkout" ] && [ "$VCSH_COMMAND_RETURN_CODE" = "0" ]; then
+	# Restore .vcsh-unclobber files after a successful operation
+	if [ -n "$_unclobber_target" ] && [ "$VCSH_COMMAND_RETURN_CODE" = "0" ]; then
 		git --git-dir="$GIT_DIR" ls-tree -r --name-only HEAD 2>/dev/null \
 			| while IFS= read -r path; do
 				src="$worktree/$path.vcsh-unclobber"
