@@ -5,7 +5,10 @@
 run() {
 	worktree="${VCSH_BASE:-$HOME}"
 
-	if { [ "$1" = "git" ] || [ "$(basename "$1")" = "git" ]; } && [ "$2" = "checkout" ]; then
+	# Match both "git" (vcsh run) and "/path/to/git" (vcsh shorthand) without a subshell
+	case "$1" in git|*/git) _is_git=1 ;; *) _is_git=0 ;; esac
+
+	if [ "$_is_git" = "1" ] && [ "$2" = "checkout" ]; then
 		# Parse the target ref from the checkout args.
 		# For -b/-B <new-branch> [<start-point>], skip the new branch name
 		# so we land on the start point (where new files actually come from).
@@ -17,11 +20,11 @@ run() {
 				continue
 			fi
 			case "$arg" in
-				git|checkout)  ;;
-				-b|-B|--orphan) skip_next=1 ;;
-				--)            break ;;
-				-*)            ;;
-				*)             target="$arg" ;;
+				git|*/git|checkout) ;;
+				-b|-B|--orphan)     skip_next=1 ;;
+				--)                 break ;;
+				-*)                 ;;
+				*)                  target="$arg" ;;
 			esac
 		done
 
@@ -54,7 +57,7 @@ run() {
 	hook post-run
 
 	# Restore .vcsh-unclobber files after a successful checkout
-	if { [ "$1" = "git" ] || [ "$(basename "$1")" = "git" ]; } && [ "$2" = "checkout" ] && [ "$VCSH_COMMAND_RETURN_CODE" = "0" ]; then
+	if [ "$_is_git" = "1" ] && [ "$2" = "checkout" ] && [ "$VCSH_COMMAND_RETURN_CODE" = "0" ]; then
 		git --git-dir="$GIT_DIR" ls-tree -r --name-only HEAD 2>/dev/null \
 			| while IFS= read -r path; do
 				src="$worktree/$path.vcsh-unclobber"
