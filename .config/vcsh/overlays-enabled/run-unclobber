@@ -8,9 +8,23 @@ run() {
 	# Match both "git" (vcsh run) and "/path/to/git" (vcsh shorthand) without a subshell
 	case "$1" in git|*/git) _is_git=1 ;; *) _is_git=0 ;; esac
 
+	# Resolve git aliases (e.g. p=pull) so we match on the canonical command name.
+	# Only resolves simple aliases (not shell aliases starting with !).
+	_cmd="$2"
+	case "$_cmd" in
+		pull|checkout) ;;
+		*)
+			_alias="$(git --git-dir="$GIT_DIR" config --get "alias.$_cmd" 2>/dev/null || true)"
+			case "$_alias" in
+				pull*)     _cmd="pull" ;;
+				checkout*) _cmd="checkout" ;;
+			esac
+			;;
+	esac
+
 	_unclobber_target=""
 
-	if [ "$_is_git" = "1" ] && [ "$2" = "checkout" ]; then
+	if [ "$_is_git" = "1" ] && [ "$_cmd" = "checkout" ]; then
 		# Parse the target ref from the checkout args.
 		# For -b/-B <new-branch> [<start-point>], skip the new branch name
 		# so we land on the start point (where new files actually come from).
@@ -42,7 +56,7 @@ run() {
 			_unclobber_target="$_target"
 		fi
 
-	elif [ "$_is_git" = "1" ] && [ "$2" = "pull" ]; then
+	elif [ "$_is_git" = "1" ] && [ "$_cmd" = "pull" ]; then
 		# Fetch first so the remote ref reflects what is actually incoming
 		git --git-dir="$GIT_DIR" fetch -q origin 2>/dev/null || true
 
