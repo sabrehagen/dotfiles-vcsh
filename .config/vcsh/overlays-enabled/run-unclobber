@@ -1,6 +1,7 @@
-# For git checkout and git pull: move any pre-existing untracked files at
-# conflicting paths to .vcsh-unclobber before the operation, then restore
-# them after so they appear as unstaged changes for inspection.
+# For git checkout and git pull: move conflicting files to .vcsh-unclobber
+# before the operation, then restore them after so they appear as unstaged
+# changes for inspection.  Handles both untracked files and tracked files
+# with local modifications.
 
 run() {
 	worktree="${VCSH_BASE:-$HOME}"
@@ -70,15 +71,21 @@ run() {
 		fi
 	fi
 
-	# Move untracked files that the operation would clobber
+	# Move conflicting files out of the way before the operation.
+	# A file conflicts if it will be changed by the incoming ref AND is either:
+	#   - untracked (exists on disk but not in current HEAD), or
+	#   - tracked with local modifications
 	if [ -n "$_unclobber_target" ]; then
-		git --git-dir="$GIT_DIR" diff --name-only --diff-filter=A HEAD "$_unclobber_target" 2>/dev/null \
+		git --git-dir="$GIT_DIR" diff --name-only HEAD "$_unclobber_target" 2>/dev/null \
 			| while IFS= read -r path; do
 				src="$worktree/$path"
 				dst="$src.vcsh-unclobber"
 				[ -e "$src" ] || continue
 				[ -e "$dst" ] && continue
-				git --git-dir="$GIT_DIR" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 && continue
+				if git --git-dir="$GIT_DIR" ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
+					# Tracked: only move if locally modified
+					git --git-dir="$GIT_DIR" --work-tree="$worktree" diff --quiet -- "$path" 2>/dev/null && continue
+				fi
 				mv -- "$src" "$dst"
 			done
 	fi
