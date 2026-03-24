@@ -96,8 +96,9 @@ run() {
 	VCSH_COMMAND_RETURN_CODE=$?
 	hook post-run
 
-	# Restore .vcsh-unclobber files after a successful operation
-	if [ -n "$_unclobber_target" ] && [ "$VCSH_COMMAND_RETURN_CODE" = "0" ]; then
+	# Restore .vcsh-unclobber files regardless of outcome — leaving them
+	# renamed on disk is worse than restoring after a failed operation.
+	if [ -n "$_unclobber_target" ]; then
 		git --git-dir="$GIT_DIR" ls-tree -r --name-only HEAD 2>/dev/null \
 			| while IFS= read -r path; do
 				src="$worktree/$path.vcsh-unclobber"
