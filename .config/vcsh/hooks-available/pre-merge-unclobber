@@ -7,7 +7,8 @@
 # the now-renamed files.
 
 worktree="${VCSH_BASE:-$HOME}"
+_branch="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || echo master)"
 
-git ls-tree -r --name-only origin/master | while IFS= read -r object; do
+git ls-tree -r --name-only "origin/$_branch" | while IFS= read -r object; do
   [ -e "$worktree/$object" ] && mv -- "$worktree/$object" "$worktree/$object.vcsh-unclobber"
 done
