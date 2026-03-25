@@ -171,14 +171,22 @@ git -C "$WORK" -c user.email=t@t -c user.name=t commit -qm "update .bashrc"
 git -C "$WORK" push -q origin master
 rm -rf "$WORK"
 
-# .bashrc is tracked and locally modified (has "my .bashrc" not "repo .bashrc")
-vcsh test-repo p 2>&1
+# .bashrc is tracked and locally modified.  run-unclobber must NOT move it —
+# git's autostash owns tracked files.  When both sides change the same content,
+# autostash pop produces a conflict: the stash is kept with user's changes and
+# the file gets conflict markers.  This surfaces the conflict rather than
+# silently discarding either side.
+vcsh test-repo p 2>&1 || true
 
-check_eq    ".bashrc preserved after pull with tracked modification" \
-	"my .bashrc" "$(cat "$WORKTREE/.bashrc")"
 check_not_exists "no .bashrc.vcsh-unclobber after tracked pull" \
 	"$WORKTREE/.bashrc.vcsh-unclobber"
-check_modified   "git sees .bashrc modified after tracked pull" ".bashrc"
+check_modified "git sees .bashrc modified after tracked pull" ".bashrc"
+_stash_count="$(git --git-dir="$GIT_DIR" stash list 2>/dev/null | wc -l | tr -d ' ')"
+check_eq "autostash preserved user changes (stash present)" "1" "$_stash_count"
+
+# Restore clean state for subsequent tests
+git --git-dir="$GIT_DIR" --work-tree="$WORKTREE" checkout HEAD -- .bashrc 2>/dev/null || true
+git --git-dir="$GIT_DIR" stash drop 2>/dev/null || true
 
 # ── 6. cleanup on failed operation ────────────────────────────────────────────
 
