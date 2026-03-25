@@ -71,10 +71,13 @@ run() {
 		fi
 	fi
 
-	# Move conflicting files out of the way before the operation.
-	# A file conflicts if it will be changed by the incoming ref AND is either:
-	#   - untracked (exists on disk but not in current HEAD), or
-	#   - tracked with local modifications
+	# Move conflicting untracked files out of the way before the operation.
+	# Only untracked files need this treatment — files that exist on disk but
+	# are not in the current HEAD, so git's autostash won't protect them.
+	# Tracked files (even locally modified ones) are left alone: autostash
+	# captures their modifications cleanly, whereas moving them creates a
+	# working-tree deletion that autostash captures as "delete", producing a
+	# modify/delete conflict when the incoming commit updates the same file.
 	if [ -n "$_unclobber_target" ]; then
 		_merge_base="$(git --git-dir="$GIT_DIR" merge-base HEAD "$_unclobber_target" 2>/dev/null || true)"
 		git --git-dir="$GIT_DIR" diff --name-only "${_merge_base:-HEAD}" "$_unclobber_target" 2>/dev/null \
@@ -83,10 +86,8 @@ run() {
 				dst="$src.vcsh-unclobber"
 				[ -e "$src" ] || continue
 				[ -e "$dst" ] && continue
-				if git --git-dir="$GIT_DIR" ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
-					# Tracked: only move if locally modified
-					git --git-dir="$GIT_DIR" --work-tree="$worktree" diff --quiet -- "$path" 2>/dev/null && continue
-				fi
+				# Skip tracked files — git autostash handles these correctly
+				git --git-dir="$GIT_DIR" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 && continue
 				mv -- "$src" "$dst"
 			done
 	fi
