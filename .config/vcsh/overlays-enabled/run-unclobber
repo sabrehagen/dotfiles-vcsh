@@ -76,7 +76,8 @@ run() {
 	#   - untracked (exists on disk but not in current HEAD), or
 	#   - tracked with local modifications
 	if [ -n "$_unclobber_target" ]; then
-		git --git-dir="$GIT_DIR" diff --name-only HEAD "$_unclobber_target" 2>/dev/null \
+		_merge_base="$(git --git-dir="$GIT_DIR" merge-base HEAD "$_unclobber_target" 2>/dev/null || true)"
+		git --git-dir="$GIT_DIR" diff --name-only "${_merge_base:-HEAD}" "$_unclobber_target" 2>/dev/null \
 			| while IFS= read -r path; do
 				src="$worktree/$path"
 				dst="$src.vcsh-unclobber"
