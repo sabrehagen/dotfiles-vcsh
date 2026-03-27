@@ -1,14 +1,21 @@
 #!/bin/sh
 
-# This code does amost exactly what the native vcsh sanity checking code
-# does except that on finding a potential merge conflict, it moves existing
-# files out of the way temporarily. Merging (part of `vcsh clone`) happens
-# cleanly, and a post-merge hook can be used to figure out what to do with
-# the now-renamed files.
+# Before a merge (including `vcsh clone`), move untracked files that would
+# conflict with the incoming tree out of the way so the merge proceeds
+# cleanly. Only untracked files are moved — tracked files are left alone
+# because git autostash (rebase.autostash=true) handles them correctly.
+# Moving a tracked file before autostash runs causes autostash to capture
+# it as a local deletion, which then produces a spurious modify/delete
+# conflict when the incoming commit updates the same file.
 
 worktree="${VCSH_BASE:-$HOME}"
 _branch="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || echo master)"
 
 git ls-tree -r --name-only "origin/$_branch" | while IFS= read -r object; do
-  [ -e "$worktree/$object" ] && mv -- "$worktree/$object" "$worktree/$object.vcsh-unclobber"
+  src="$worktree/$object"
+  [ -e "$src" ] || continue
+  [ -e "$src.vcsh-unclobber" ] && continue
+  # Skip tracked files — autostash handles these without creating conflicts
+  git ls-files --error-unmatch -- "$object" >/dev/null 2>&1 && continue
+  mv -- "$src" "$src.vcsh-unclobber"
 done
