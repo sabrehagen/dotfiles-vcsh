@@ -201,6 +201,49 @@ vcsh run test-repo git checkout nonexistent-branch-that-does-not-exist 2>&1 || t
 check_eq    ".bashrc restored after failed checkout" "my .bashrc" "$(cat "$WORKTREE/.bashrc")"
 check_not_exists "no .bashrc.vcsh-unclobber after failed checkout" "$WORKTREE/.bashrc.vcsh-unclobber"
 
+# ── 7. pull with staged changes ───────────────────────────────────────────────
+
+printf '\n=== 7. pull with staged changes (autostash drops index status) ===\n'
+
+# This scenario requires rebase.autostash to reproduce the bug observed in
+# practice: vcsh-update.sh runs on a 30-second interval and can race with an
+# in-progress `git add`.  Set pull.rebase + rebase.autostash explicitly so the
+# test is self-contained and does not depend on global gitconfig.
+git --git-dir="$GIT_DIR" config pull.rebase true
+git --git-dir="$GIT_DIR" config rebase.autostash true
+
+# Push a new unrelated file to remote (does not touch .bashrc)
+WORK=$(mktemp -d)
+git clone -q "$REMOTE" "$WORK"
+git -C "$WORK" checkout -q master
+printf 'repo staged-test.txt\n' > "$WORK/staged-test.txt"
+git -C "$WORK" add .
+git -C "$WORK" -c user.email=t@t -c user.name=t commit -qm "add staged-test.txt"
+git -C "$WORK" push -q origin master
+rm -rf "$WORK"
+
+# Stage a local modification to .bashrc
+git --git-dir="$GIT_DIR" --work-tree="$WORKTREE" checkout HEAD -- .bashrc 2>/dev/null || true
+printf 'my staged .bashrc\n' > "$WORKTREE/.bashrc"
+git --git-dir="$GIT_DIR" --work-tree="$WORKTREE" add -- .bashrc
+
+_staged_before=$(git --git-dir="$GIT_DIR" --work-tree="$WORKTREE" diff --cached --name-only 2>/dev/null)
+check_eq ".bashrc is staged before pull" ".bashrc" "$_staged_before"
+
+vcsh test-repo pull 2>&1 || true
+
+# autostash preserves the data in the working tree...
+check_eq ".bashrc change preserved in working tree after pull" \
+	"my staged .bashrc" "$(cat "$WORKTREE/.bashrc")"
+# ...but autostash pop runs without --index, so the staged flag is lost.
+# This is the bug that the vcsh-update.sh staged-changes guard exists to prevent.
+_staged_after=$(git --git-dir="$GIT_DIR" --work-tree="$WORKTREE" diff --cached --name-only 2>/dev/null)
+check_eq ".bashrc no longer staged after pull (autostash --index limitation)" \
+	"" "$_staged_after"
+
+# Clean up
+git --git-dir="$GIT_DIR" --work-tree="$WORKTREE" checkout HEAD -- .bashrc 2>/dev/null || true
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 printf '\nResults: %d passed, %d failed\n' "$PASS" "$FAIL"
