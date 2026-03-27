@@ -58,8 +58,14 @@ run() {
 		fi
 
 	elif [ "$_is_git" = "1" ] && [ "$_cmd" = "pull" ]; then
-		# Fetch first so the remote ref reflects what is actually incoming
-		git --git-dir="$GIT_DIR" fetch -q origin 2>/dev/null || true
+		# Do NOT pre-fetch here. A separate fetch before pull doubles SSH sessions
+		# (one pre-fetch + one from git pull itself), which overloads the SSH
+		# ControlMaster and causes intermittent "Cannot rebase onto multiple branches"
+		# failures. Use the locally cached remote ref instead — it reflects the last
+		# pull and is accurate enough for the unclobber diff. If a brand-new remote
+		# file conflicts with an untracked local file, git pull will report a clear
+		# "untracked file would be overwritten" error; the next pull succeeds once
+		# the cached ref is fresh.
 
 		_head="$(git --git-dir="$GIT_DIR" symbolic-ref -q HEAD 2>/dev/null || true)"
 		if [ -n "$_head" ]; then
