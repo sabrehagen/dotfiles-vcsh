@@ -15,7 +15,12 @@ git ls-tree -r --name-only "$_ref" | while IFS= read -r object; do
   src="$worktree/$object"
   [ -e "$src" ] || continue
   [ -e "$src.vcsh-unclobber" ] && continue
-  # Skip tracked files — autostash handles these without creating conflicts
+  # Never move a file git knows about. "Knows about" must mean in HEAD OR
+  # in the index — index alone is too narrow, because any divergence
+  # between the two (transient rebase state, interrupted earlier operation,
+  # partial autostash pop) leaves real tracked files looking untracked to
+  # ls-files and silently moves them out of the worktree.
+  git cat-file -e "HEAD:$object" 2>/dev/null && continue
   git ls-files --error-unmatch -- "$object" >/dev/null 2>&1 && continue
   mv -- "$src" "$src.vcsh-unclobber"
 done

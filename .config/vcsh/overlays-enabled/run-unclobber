@@ -92,7 +92,14 @@ run() {
 				dst="$src.vcsh-unclobber"
 				[ -e "$src" ] || continue
 				[ -e "$dst" ] && continue
-				# Skip tracked files — git autostash handles these correctly
+				# Never move a file git knows about. "Knows about" must mean
+				# in HEAD OR in the index — index alone is too narrow, because
+				# any divergence between the two (a transient rebase state,
+				# an interrupted earlier operation, a partial autostash pop)
+				# leaves real tracked files looking untracked to ls-files and
+				# silently moves them out of the worktree. Moving a tracked
+				# file also triggers a modify/delete conflict on autostash pop.
+				git --git-dir="$GIT_DIR" cat-file -e "HEAD:$path" 2>/dev/null && continue
 				git --git-dir="$GIT_DIR" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 && continue
 				mv -- "$src" "$dst"
 			done

@@ -166,9 +166,56 @@ check_not_exists "no notes.txt.vcsh-unclobber after post-merge" "$UNCLOBBER_WT/n
 
 rm -rf "$UNCLOBBER_TEST"
 
-# ── 4. vcsh <repo> pull ───────────────────────────────────────────────────────
+# ── 4. pre-merge-unclobber leaves HEAD-tracked files alone in bad index states ─
 
-printf '\n=== 4. vcsh <repo> pull (run-unclobber overlay) ===\n'
+printf '\n=== 4. pre-merge-unclobber does not move HEAD-tracked files in anomalous index states ===\n'
+
+# Reproduces the dotfiles-picom modify/delete-conflict bug.  The hook's
+# original "is this file tracked?" check was `ls-files --error-unmatch`,
+# which returns non-zero when the file is staged for deletion (or absent
+# from the index in rebase-intermediate states) — even though the file
+# is still committed in HEAD.  The hook then moves the tracked file to
+# .vcsh-unclobber, git pull's autostash captures the resulting working-tree
+# deletion, and autostash pop replays it against the incoming version →
+# modify/delete conflict and stranded .vcsh-unclobber file.
+# The same check pattern is used in the run-unclobber overlay; testing
+# the standalone hook here exercises the shared logic.
+
+STAGED_TEST=$(mktemp -d /tmp/vcsh-staged-test.XXXXXX)
+STAGED_WT="$STAGED_TEST/home"
+STAGED_GIT="$STAGED_TEST/repo.git"
+mkdir -p "$STAGED_WT"
+
+# Build a repo where HEAD == origin/master, populate index from HEAD, and
+# materialize the worktree so the files exist on disk.
+git init -q --bare "$STAGED_GIT"
+git --git-dir="$STAGED_GIT" fetch -q "$REMOTE" master:refs/remotes/origin/master >/dev/null 2>&1
+git --git-dir="$STAGED_GIT" update-ref refs/heads/master refs/remotes/origin/master
+git --git-dir="$STAGED_GIT" symbolic-ref HEAD refs/heads/master
+git --git-dir="$STAGED_GIT" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/master
+GIT_DIR="$STAGED_GIT" GIT_WORK_TREE="$STAGED_WT" git read-tree HEAD
+GIT_DIR="$STAGED_GIT" GIT_WORK_TREE="$STAGED_WT" git checkout-index --all --prefix="$STAGED_WT/" -f
+
+# Stage .bashrc for deletion.  HEAD still has it, worktree still has it,
+# but the index has no entry — `ls-files --error-unmatch -- .bashrc` fails.
+git --git-dir="$STAGED_GIT" --work-tree="$STAGED_WT" rm --cached -- .bashrc >/dev/null 2>&1
+
+# Run pre-merge-unclobber against the same refs/remotes/origin/master.
+# With the buggy ls-files-only check the hook would move .bashrc; the
+# robust check must consult HEAD and skip it.
+GIT_DIR="$STAGED_GIT" VCSH_BASE="$STAGED_WT" \
+	"$HOME/.config/vcsh/hooks-available/pre-merge-unclobber"
+
+check_not_exists "pre-merge-unclobber leaves HEAD-tracked .bashrc despite staged-deletion in index" \
+	"$STAGED_WT/.bashrc.vcsh-unclobber"
+check_eq "tracked .bashrc still on disk after pre-merge-unclobber" \
+	"yes" "$([ -e "$STAGED_WT/.bashrc" ] && echo yes)"
+
+rm -rf "$STAGED_TEST"
+
+# ── 5. vcsh <repo> pull ───────────────────────────────────────────────────────
+
+printf '\n=== 5. vcsh <repo> pull (run-unclobber overlay) ===\n'
 
 # Switch back to master; add a new commit to remote master introducing new.txt
 git --git-dir="$GIT_DIR" --work-tree="$WORKTREE" checkout -q -- extra.txt
@@ -192,9 +239,9 @@ check_eq    "new.txt original content after pull" "my new.txt" "$(cat "$WORKTREE
 check_not_exists "no new.txt.vcsh-unclobber after pull" "$WORKTREE/new.txt.vcsh-unclobber"
 check_modified   "git sees new.txt modified after pull" "new.txt"
 
-# ── 5. vcsh <repo> p (git alias for pull) ────────────────────────────────────
+# ── 6. vcsh <repo> p (git alias for pull) ────────────────────────────────────
 
-printf '\n=== 5. vcsh <repo> p (git alias for pull) ===\n'
+printf '\n=== 6. vcsh <repo> p (git alias for pull) ===\n'
 
 WORK=$(mktemp -d)
 git clone -q "$REMOTE" "$WORK"
@@ -213,9 +260,9 @@ check_eq    "aliased.txt original content after vcsh <repo> p" "my aliased.txt" 
 check_not_exists "no aliased.txt.vcsh-unclobber after vcsh <repo> p" "$WORKTREE/aliased.txt.vcsh-unclobber"
 check_modified   "git sees aliased.txt modified after vcsh <repo> p" "aliased.txt"
 
-# ── 6. pull with tracked files locally modified ───────────────────────────────
+# ── 7. pull with tracked files locally modified ───────────────────────────────
 
-printf '\n=== 6. pull with locally modified tracked files ===\n'
+printf '\n=== 7. pull with locally modified tracked files ===\n'
 
 # Push a change to .bashrc on remote (already tracked and locally modified)
 WORK=$(mktemp -d)
@@ -244,9 +291,9 @@ check_eq "autostash preserved user changes (stash present)" "1" "$_stash_count"
 git --git-dir="$GIT_DIR" --work-tree="$WORKTREE" checkout HEAD -- .bashrc 2>/dev/null || true
 git --git-dir="$GIT_DIR" stash drop 2>/dev/null || true
 
-# ── 7. cleanup on failed operation ────────────────────────────────────────────
+# ── 8. cleanup on failed operation ────────────────────────────────────────────
 
-printf '\n=== 7. cleanup on failed operation ===\n'
+printf '\n=== 8. cleanup on failed operation ===\n'
 
 # Force a checkout to a nonexistent ref — this will fail, but any files
 # moved to .vcsh-unclobber beforehand must still be restored.
@@ -257,9 +304,9 @@ vcsh run test-repo git checkout nonexistent-branch-that-does-not-exist 2>&1 || t
 check_eq    ".bashrc restored after failed checkout" "my .bashrc" "$(cat "$WORKTREE/.bashrc")"
 check_not_exists "no .bashrc.vcsh-unclobber after failed checkout" "$WORKTREE/.bashrc.vcsh-unclobber"
 
-# ── 8. pull with staged changes ───────────────────────────────────────────────
+# ── 9. pull with staged changes ───────────────────────────────────────────────
 
-printf '\n=== 8. pull with staged changes (autostash drops index status) ===\n'
+printf '\n=== 9. pull with staged changes (autostash drops index status) ===\n'
 
 # This scenario requires rebase.autostash to reproduce the bug observed in
 # practice: vcsh-update.sh runs on a 30-second interval and can race with an
