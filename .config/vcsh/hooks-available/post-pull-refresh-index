@@ -8,10 +8,9 @@
 
 cd "${VCSH_BASE:-$HOME}" || exit 0
 
-repo_d="${VCSH_REPO_D:-${XDG_CONFIG_HOME:-$HOME/.config}/vcsh/repo.d}"
+repo_git="${VCSH_REPO_D:-${XDG_CONFIG_HOME:-$HOME/.config}/vcsh/repo.d}/$VCSH_REPO_NAME.git"
 
-for repo_git in "$repo_d"/*.git; do
-  [ -d "$repo_git" ] || continue
-  GIT_DIR="$repo_git" /usr/local/bin/git diff --quiet 2>/dev/null && \
-    GIT_DIR="$repo_git" /usr/local/bin/git add --update >/dev/null 2>&1 || true
-done
+[ -d "$repo_git" ] || exit 0
+
+GIT_DIR="$repo_git" /usr/local/bin/git diff --quiet 2>/dev/null && \
+  GIT_DIR="$repo_git" /usr/local/bin/git add --update >/dev/null 2>&1 || true
