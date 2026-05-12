@@ -110,9 +110,65 @@ vcsh test-repo checkout feature 2>&1
 check_eq    "extra.txt preserved via shorthand checkout" "my extra.txt" "$(cat "$WORKTREE/extra.txt")"
 check_not_exists "no extra.txt.vcsh-unclobber via shorthand" "$WORKTREE/extra.txt.vcsh-unclobber"
 
-# ── 3. vcsh <repo> pull ───────────────────────────────────────────────────────
+# ── 3. pre/post-merge hooks resolve refs/remotes/origin/HEAD correctly ────────
 
-printf '\n=== 3. vcsh <repo> pull (run-unclobber overlay) ===\n'
+printf '\n=== 3. pre/post-merge hooks with refs/remotes/origin/HEAD set ===\n'
+
+# Reproduces a bug where `git symbolic-ref --short refs/remotes/origin/HEAD`
+# returns `origin/master` (not `master`), and the hook then built
+# `origin/origin/master` — an invalid ref. The ls-tree silently produced no
+# output, the hooks became no-ops, and any .vcsh-unclobber renames done by
+# other code paths were left stranded on disk as "deleted" tracked files.
+# vcsh's git-fetch-based clone doesn't set the symbolic ref, but real-world
+# repos (where `git remote set-head` has run, or after a porcelain git clone)
+# do, so the bug never triggered in the previous tests.
+
+UNCLOBBER_TEST=$(mktemp -d /tmp/vcsh-unclobber-test.XXXXXX)
+UNCLOBBER_WT="$UNCLOBBER_TEST/home"
+UNCLOBBER_GIT="$UNCLOBBER_TEST/repo.git"
+mkdir -p "$UNCLOBBER_WT"
+
+git init -q --bare "$UNCLOBBER_GIT"
+git --git-dir="$UNCLOBBER_GIT" fetch -q "$REMOTE" master:refs/remotes/origin/master >/dev/null 2>&1
+git --git-dir="$UNCLOBBER_GIT" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/master
+
+# pre-merge: should move untracked conflicts out of the way
+printf 'my .bashrc\n'   > "$UNCLOBBER_WT/.bashrc"
+printf 'my notes.txt\n' > "$UNCLOBBER_WT/notes.txt"
+
+GIT_DIR="$UNCLOBBER_GIT" VCSH_BASE="$UNCLOBBER_WT" \
+	"$HOME/.config/vcsh/hooks-available/pre-merge-unclobber"
+
+check_eq    "pre-merge moves .bashrc when refs/remotes/origin/HEAD is set" \
+	"my .bashrc" "$(cat "$UNCLOBBER_WT/.bashrc.vcsh-unclobber" 2>/dev/null)"
+check_eq    "pre-merge moves notes.txt when refs/remotes/origin/HEAD is set" \
+	"my notes.txt" "$(cat "$UNCLOBBER_WT/notes.txt.vcsh-unclobber" 2>/dev/null)"
+check_not_exists "pre-merge clears .bashrc from worktree"   "$UNCLOBBER_WT/.bashrc"
+check_not_exists "pre-merge clears notes.txt from worktree" "$UNCLOBBER_WT/notes.txt"
+
+# post-merge: should restore from .vcsh-unclobber.  Seed the files
+# directly so this check fails independently if post-merge no-ops,
+# even when pre-merge happens to have done nothing.
+rm -f "$UNCLOBBER_WT/.bashrc" "$UNCLOBBER_WT/notes.txt" \
+      "$UNCLOBBER_WT/.bashrc.vcsh-unclobber" "$UNCLOBBER_WT/notes.txt.vcsh-unclobber"
+printf 'my .bashrc\n'   > "$UNCLOBBER_WT/.bashrc.vcsh-unclobber"
+printf 'my notes.txt\n' > "$UNCLOBBER_WT/notes.txt.vcsh-unclobber"
+
+GIT_DIR="$UNCLOBBER_GIT" VCSH_BASE="$UNCLOBBER_WT" \
+	"$HOME/.config/vcsh/hooks-available/post-merge-unclobber"
+
+check_eq    "post-merge restores .bashrc when refs/remotes/origin/HEAD is set" \
+	"my .bashrc" "$(cat "$UNCLOBBER_WT/.bashrc" 2>/dev/null)"
+check_eq    "post-merge restores notes.txt when refs/remotes/origin/HEAD is set" \
+	"my notes.txt" "$(cat "$UNCLOBBER_WT/notes.txt" 2>/dev/null)"
+check_not_exists "no .bashrc.vcsh-unclobber after post-merge"   "$UNCLOBBER_WT/.bashrc.vcsh-unclobber"
+check_not_exists "no notes.txt.vcsh-unclobber after post-merge" "$UNCLOBBER_WT/notes.txt.vcsh-unclobber"
+
+rm -rf "$UNCLOBBER_TEST"
+
+# ── 4. vcsh <repo> pull ───────────────────────────────────────────────────────
+
+printf '\n=== 4. vcsh <repo> pull (run-unclobber overlay) ===\n'
 
 # Switch back to master; add a new commit to remote master introducing new.txt
 git --git-dir="$GIT_DIR" --work-tree="$WORKTREE" checkout -q -- extra.txt
@@ -136,9 +192,9 @@ check_eq    "new.txt original content after pull" "my new.txt" "$(cat "$WORKTREE
 check_not_exists "no new.txt.vcsh-unclobber after pull" "$WORKTREE/new.txt.vcsh-unclobber"
 check_modified   "git sees new.txt modified after pull" "new.txt"
 
-# ── 4. vcsh <repo> p (git alias for pull) ────────────────────────────────────
+# ── 5. vcsh <repo> p (git alias for pull) ────────────────────────────────────
 
-printf '\n=== 4. vcsh <repo> p (git alias for pull) ===\n'
+printf '\n=== 5. vcsh <repo> p (git alias for pull) ===\n'
 
 WORK=$(mktemp -d)
 git clone -q "$REMOTE" "$WORK"
@@ -157,9 +213,9 @@ check_eq    "aliased.txt original content after vcsh <repo> p" "my aliased.txt" 
 check_not_exists "no aliased.txt.vcsh-unclobber after vcsh <repo> p" "$WORKTREE/aliased.txt.vcsh-unclobber"
 check_modified   "git sees aliased.txt modified after vcsh <repo> p" "aliased.txt"
 
-# ── 5. pull with tracked files locally modified ───────────────────────────────
+# ── 6. pull with tracked files locally modified ───────────────────────────────
 
-printf '\n=== 5. pull with locally modified tracked files ===\n'
+printf '\n=== 6. pull with locally modified tracked files ===\n'
 
 # Push a change to .bashrc on remote (already tracked and locally modified)
 WORK=$(mktemp -d)
@@ -188,9 +244,9 @@ check_eq "autostash preserved user changes (stash present)" "1" "$_stash_count"
 git --git-dir="$GIT_DIR" --work-tree="$WORKTREE" checkout HEAD -- .bashrc 2>/dev/null || true
 git --git-dir="$GIT_DIR" stash drop 2>/dev/null || true
 
-# ── 6. cleanup on failed operation ────────────────────────────────────────────
+# ── 7. cleanup on failed operation ────────────────────────────────────────────
 
-printf '\n=== 6. cleanup on failed operation ===\n'
+printf '\n=== 7. cleanup on failed operation ===\n'
 
 # Force a checkout to a nonexistent ref — this will fail, but any files
 # moved to .vcsh-unclobber beforehand must still be restored.
@@ -201,9 +257,9 @@ vcsh run test-repo git checkout nonexistent-branch-that-does-not-exist 2>&1 || t
 check_eq    ".bashrc restored after failed checkout" "my .bashrc" "$(cat "$WORKTREE/.bashrc")"
 check_not_exists "no .bashrc.vcsh-unclobber after failed checkout" "$WORKTREE/.bashrc.vcsh-unclobber"
 
-# ── 7. pull with staged changes ───────────────────────────────────────────────
+# ── 8. pull with staged changes ───────────────────────────────────────────────
 
-printf '\n=== 7. pull with staged changes (autostash drops index status) ===\n'
+printf '\n=== 8. pull with staged changes (autostash drops index status) ===\n'
 
 # This scenario requires rebase.autostash to reproduce the bug observed in
 # practice: vcsh-update.sh runs on a 30-second interval and can race with an

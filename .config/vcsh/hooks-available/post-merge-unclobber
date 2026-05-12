@@ -8,8 +8,8 @@
 # working branch and you can deal with them as usual.
 
 worktree="${VCSH_BASE:-$HOME}"
-_branch="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || echo master)"
+_ref="$(git symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null || echo refs/remotes/origin/master)"
 
-git ls-tree -r --name-only "origin/$_branch" | while IFS= read -r object; do
+git ls-tree -r --name-only "$_ref" | while IFS= read -r object; do
   [ -e "$worktree/$object.vcsh-unclobber" ] && mv -- "$worktree/$object.vcsh-unclobber" "$worktree/$object"
 done
