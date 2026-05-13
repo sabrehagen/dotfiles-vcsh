@@ -1,16 +1,11 @@
 #!/bin/sh
 
 # Re-stage tracked files so clean-filtered files do not show as modified by git status.
-# `git update-index --refresh` short-circuits on size mismatch and skips the clean
-# filter, leaving phantoms in place. `git add --update` re-runs the filter and
-# rewrites the index entry's stat, which is what actually clears them. The diff
-# guard prevents staging real user edits when the hook fires after a pull.
+# `git update-index --refresh` short-circuits and skips the clean filter, leaving
+# phantoms in place. `git add --update` re-runs the filter and rewrites the index
+# entry's stat (size, mtime), which is what actually clears them. The diff guard
+# prevents staging real user edits when the hook fires after a pull.
 
-cd "${VCSH_BASE:-$HOME}" || exit 0
-
-repo_git="${VCSH_REPO_D:-${XDG_CONFIG_HOME:-$HOME/.config}/vcsh/repo.d}/$VCSH_REPO_NAME.git"
-
-[ -d "$repo_git" ] || exit 0
-
-GIT_DIR="$repo_git" /usr/local/bin/git diff --quiet 2>/dev/null && \
-  GIT_DIR="$repo_git" /usr/local/bin/git add --update >/dev/null 2>&1 || true
+cd "$VCSH_BASE"
+export GIT_DIR="$VCSH_REPO_D/$VCSH_REPO_NAME.git"
+git diff --quiet && git add --update || :
