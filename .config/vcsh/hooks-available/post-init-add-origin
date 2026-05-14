@@ -3,7 +3,8 @@
 # This adds a remote origin for newly initialized repos (not clones),
 # useful for creating new dotfile repositories you plan to push.
 #
-# Avoid running during `vcsh clone`, which already sets its own remote.
+# Avoid running during `vcsh clone`, which calls init() internally and
+# would otherwise overwrite the remote that clone is about to set.
 [ "$VCSH_COMMAND" = "init" ] || exit 0
 
 # Do nothing if an origin is already configured.

@@ -7,7 +7,7 @@
 # directory. Git and thus vcsh now see these as un-staged changes to the
 # working branch and you can deal with them as usual.
 
-worktree="${VCSH_BASE:-$HOME}"
+worktree="$VCSH_BASE"
 _ref="$(git symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null || echo refs/remotes/origin/master)"
 
 git ls-tree -r --name-only "$_ref" | while IFS= read -r object; do

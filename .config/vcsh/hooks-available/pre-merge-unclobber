@@ -8,7 +8,7 @@
 # it as a local deletion, which then produces a spurious modify/delete
 # conflict when the incoming commit updates the same file.
 
-worktree="${VCSH_BASE:-$HOME}"
+worktree="$VCSH_BASE"
 _ref="$(git symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null || echo refs/remotes/origin/master)"
 
 git ls-tree -r --name-only "$_ref" | while IFS= read -r object; do
